@@ -3,19 +3,14 @@
 
 
 # -----------------------------------------------------------
-# 
 #
-# 2020 
+#
+# 2020
 # Víctor Emiliano Fernández Rubio
 # Gonzalo Guzmán del Río
 # Carlos Llames Arribas
-# 
+#
 # -----------------------------------------------------------
-
-#EXAMPLE COMMAND: python TrainNN.py 1 1-1.csv 15 20 10000 256 1024 10 2 GRU LSTM 0.5
-#"/C python TrainNN.py 1 ..\\Maps\\1-1.csv 15  10000 256 1024 20 1  LSTM 0.2 "
-#in case you want a default network you must put "1 default" in NHIDDENLAYERS and NHIDDENLAYERS respectively in the
-#command line
 
 
 import tensorflow as tf
@@ -23,82 +18,126 @@ import tensorflow as tf
 import numpy as np
 
 import os
-import time
 import random
-import csv
 import sys
-import pickle
-
+import time
+import csv
 
 try:
     from StringIO import StringIO ## for Python 2
 except ImportError:
     from io import StringIO ## for Python 3
 
-NFILES = int(sys.argv[1])
-FILE = []
-for f in range(NFILES):
-    FILE.append(str(sys.argv[f + 2]))
+def ReadArgsForTrainning():
 
-# The maximum length sentence we want for a single input in characters
-SEQLENGTH = int(sys.argv[NFILES + 2])
+    global NFILES
+    NFILES = int(sys.argv[1])
+    print(NFILES)
+    print()
+    global FILE
+    FILE = []
+    for f in range(NFILES):
+        FILE.append(str(sys.argv[f + 2]))
 
-# Batch size
-BATCHSIZE = int(sys.argv[NFILES + 3])
+    # The maximum length sentence we want for a single input in characters
+    global SEQLENGTH
+    SEQLENGTH = int(sys.argv[NFILES + 2])
+    print(SEQLENGTH)
+    print()
+    # Buffer size to shuffle the dataset
+    # (TF data is designed to work with possibly infinite sequences,
+    # so it doesn't attempt to shuffle the entire sequence in memory. Instead,
+    # it maintains a buffer in which it shuffles elements).
+    global BUFFERSIZE
+    BUFFERSIZE = int(sys.argv[NFILES + 3])
+    print(BUFFERSIZE)
+    print()
+    # The embedding dimension
+    global EMBEDDINGDIM
+    EMBEDDINGDIM = int(sys.argv[NFILES + 4])
+    print(EMBEDDINGDIM)
+    print()
 
-# Buffer size to shuffle the dataset
-# (TF data is designed to work with possibly infinite sequences,
-# so it doesn't attempt to shuffle the entire sequence in memory. Instead,
-# it maintains a buffer in which it shuffles elements).
-BUFFERSIZE = int(sys.argv[NFILES + 4])
+    # Number of NN units
+    global NNUNITS
+    NNUNITS = int(sys.argv[NFILES + 5])
+    print(NNUNITS)
+    print()
+    #Number of times to train
+    global EPOCHS
+    EPOCHS = int(sys.argv[NFILES + 6])
+    print(EPOCHS)
+    print()
+    #Number of functional hidden layers
+    global NHIDDENLAYERS
+    NHIDDENLAYERS = int(sys.argv[NFILES + 7])
+    print(NHIDDENLAYERS)
+    print()
+    global HIDDENLAYERS
+    HIDDENLAYERS = []
+    for l in range(NHIDDENLAYERS):
+        HIDDENLAYERS.append(str(sys.argv[NFILES + l + 8]))
+        print(str(sys.argv[NFILES + l + 8]))
 
-# The embedding dimension
-EMBEDDINGDIM = int(sys.argv[NFILES + 5])
+    print()
+    #Give back more or less random results
+    global TEMPERATURE
+    TEMPERATURE = float(sys.argv[NFILES + NHIDDENLAYERS + 8])
+    print(TEMPERATURE)
+    print()
 
-# Number of NN units
-NNUNITS = int(sys.argv[NFILES + 6])
-
-#Number of times to train
-EPOCHS = int(sys.argv[NFILES + 7])
-
-#Number of functional hidden layers
-NHIDDENLAYERS = int(sys.argv[NFILES + 8])
-
-HIDDENLAYERS = []
-for l in range(NHIDDENLAYERS):
-    HIDDENLAYERS.append(str(sys.argv[NFILES + l + 9]))
-
-
-#Give back more or less random results
-TEMPERATURE = float(sys.argv[NFILES + NHIDDENLAYERS + 9])
+    global DEPURATION
+    DEPURATION = False
+    if(len(sys.argv) > NFILES + NHIDDENLAYERS + 9):
+        if str(sys.argv[NFILES + NHIDDENLAYERS + 9]) == "-d" or str(sys.argv[NFILES + NHIDDENLAYERS + 9]) == "--debug":
+            DEPURATION = True
+            try:
+                path = "../Logs/"
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                logFileName = time.strftime("%Y%m%d-%H%M%S")
+                sys.stdout = open(path + logFileName +"_RNN.txt", "w")
+            except OSError:
+                if not os.path.isdir(path):
+                    raise
 
 
-DEPURATION = False
-if(len(sys.argv) > NFILES + NHIDDENLAYERS + 10):
-    if str(sys.argv[NFILES + NHIDDENLAYERS + 10]) == "-d" or str(sys.argv[NFILES + NHIDDENLAYERS + 10]) == "--debug":
-        DEPURATION = True
-        try: 
-            path = "../Logs/"
-            if not os.path.exists(path):
-                os.makedirs(path)
-            logFileName = time.strftime("%Y%m%d-%H%M%S") 
-            sys.stdout = open(path + logFileName +"_RNN.txt", "w")
-        except OSError:
-            if not os.path.isdir(path):
-                raise
+def ReadArgsForGenerating():
+
+    global TRAINFILE
+    TRAINFILE = str(sys.argv[1])
+    global WIDTH
+    WIDTH = int(sys.argv[2])
+    global OUTPUT
+    OUTPUT = str(sys.argv[3])
+    global DEPURATION
+    DEPURATION = False
+
+    if(len(sys.argv) > 4):
+        if str(sys.argv[4]) == "-d" or str(sys.argv[4]) == "--debug":
+            DEPURATION = True
+            try:
+                path = "../Logs/"
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                logFileName = time.strftime("%Y%m%d-%H%M%S")
+                sys.stdout = open(path + logFileName +"_Generated_NN.txt", "w")
+            except OSError:
+                if not os.path.isdir(path):
+                    raise
 
 
 # Read a file that is delimited by ',' and return a matrix of the level
 def ReadFile(file):
-    
+
     text = np.genfromtxt(file, delimiter=',',dtype=None)
     text = text.transpose()
-    
+
     if DEPURATION:
         print("File name: " + str(file))
         print(text)
         print()
-    
+
     return text
 
 
@@ -139,11 +178,12 @@ def GetExamplesPerEpoch(text, seqLength):
 
     if DEPURATION:
         print("Examples per epoch:" + str(len(text) // (seqLength + 1)))
-        
-    if BATCHSIZE > (len(text) // (seqLength + 1)):
-        sys.exit("BATCHSIZE is greater than examplesPerEpoch. Please introduce a value for BATCHSIZE below " + str(len(text) // (seqLength + 1)) )
 
-    return len(text) // (seqLength + 1)
+    examplesPerEpoch = len(text) // (seqLength + 1)
+
+
+    # BATCHSIZE > examplesPerEpoch ---> sys.exit("BATCHSIZE IS GREATER THAN examplesPerEpoch")
+    return examplesPerEpoch
 
 
 # Create training examples / targets
@@ -159,7 +199,7 @@ def CreateTrainingSamples(textint, idx2char):
     if DEPURATION:
     	print("Data list: " + str(listDataset))
     	print("First sequence: " + str(firstSeq))
-    
+
     return firstSeq, charDataset
 
 
@@ -194,7 +234,7 @@ def BuildModel(vocabSize, embeddingDim, nnUnits, batchSize):
                 model.add(tf.keras.layers.LSTM(nnUnits, return_sequences=True, stateful=True, recurrent_initializer='glorot_uniform'))
             else:
                 model.add(tf.keras.layers.GRU(nnUnits, return_sequences=True, stateful=True, recurrent_initializer='glorot_uniform'))
-        
+
         model.add(tf.keras.layers.Dense(vocabSize))
 
     if DEPURATION:
@@ -209,7 +249,7 @@ def Loss(labels, logits):
 
 
 #Generate slices of the level from a trained model, a starting sequence and a length
-def GenerateText(model, startString, length):
+def GenerateText(model, startString, length, char2idx, idx2char):
   # Evaluation step (generating text using the learned model)
 
   # Number of characters to generate
@@ -225,7 +265,7 @@ def GenerateText(model, startString, length):
 
   # Low temperatures results in more predictable text.
   # Higher temperatures results in more surprising text.
-    temperature = TEMPERATURE
+    temperature = TEMPERATURE  # TODO: CAMBIAR
 
   # Here batch size == 1
     model.reset_states()
@@ -279,109 +319,3 @@ def SaveFile(fileName, text):
     csvoutput.close()
     if DEPURATION:
         print("Generated a RNN file " + str(fileName) + " with a length of " + str(WIDTH))
-
-
-if DEPURATION: 
-    print("FILES: " + str(NFILES))
-    for f in FILE:
-        print("   FILE: " + str(f))
-    print()
-    print("SEQUENCE LENGHT: " + str(SEQLENGTH))
-    print()
-    print("BATCH SIZE: " + str(BATCHSIZE))
-    print()
-    print("BUFFER SIZE: " + str(BUFFERSIZE))
-    print()
-    print("EMBEDDING DIM: " + str(EMBEDDINGDIM))
-    print()
-    print("NN UNITS: " + str(NNUNITS))
-    print()
-    print("EPOCHS: " + str(EPOCHS))
-    print()
-    print("LAYERS: " + str(NHIDDENLAYERS))
-    for l in HIDDENLAYERS:
-        print("   LAYER: " + str(l))
-    print()
-    print("TEMPERATURE: " + str(TEMPERATURE))
-    print()
-    
-print("Generating neural network:")
-print()
-#Auxiliar variables to store the first sequence to generate text
-listDatasets = []
-vocab = []
-textstr = []
-
-for f in FILE:
-    text = ReadFile(f) 
-    v, tstr = GetVocabulary(text)
-    vocab += (v)
-    textstr.append(tstr) 
-
-vocab = set(vocab)
-
-
-char2idx, idx2char = VectorizeText(vocab)
-#print(idx2char.size)
-
-textint = []
-for t in textstr:
-    textint.append(np.array([char2idx[s] for s in t]))
-
-
-firstSeq = False
-firstSequenceToUse = ""
-datasets = []
-for t in textint:
-    print(t)
-    print()
-    firstSequence, charDataset = CreateTrainingSamples(t, idx2char)
-    if not firstSeq:
-        firstSequenceToUse = firstSequence
-        firstSeq = True
-
-    sequencesCreated = CreateSequences(SEQLENGTH, charDataset)
-
-    dataset = sequencesCreated.map(SplitInputTarget)
-
-    dataset = dataset.shuffle(BUFFERSIZE, False).batch(GetExamplesPerEpoch(t, SEQLENGTH), drop_remainder=True)
-    datasets.append(dataset)
-
-
-
-
-
-# Length of the vocabulary in chars
-vocabSize = len(vocab)
-model = BuildModel(vocabSize = vocabSize, embeddingDim=EMBEDDINGDIM, nnUnits=NNUNITS, batchSize=BATCHSIZE)
-model.summary()
-model.compile(optimizer='adam', loss=Loss)
-
-# Directory where the checkpoints will be saved
-checkpointDir = './NNTraining/cp.ckpt'
-# Name of the checkpoint files
-# checkpointPrefix = os.path.join(checkpointDir, "ckpt_{epoch}")
-
-checkpointCallback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpointDir, save_weights_only=True)
-
-for d in datasets:
-    model.fit(d, epochs=EPOCHS, callbacks=[checkpointCallback])
-
-
-try:
-    os.mkdir('./NNTraining/')
-except FileExistsError:
-    pass
-
-trainFileName = time.strftime("%Y%m%d_%H%M%S")
-
-with open('./NNTraining/' + trainFileName + '_Training_NN.pkl', "wb") as f:
-    pickle.dump(char2idx, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(idx2char, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(vocabSize, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(EMBEDDINGDIM, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(NNUNITS, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(firstSequenceToUse, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(NHIDDENLAYERS, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(HIDDENLAYERS, f, pickle.HIGHEST_PROTOCOL)
-    pickle.dump(TEMPERATURE, f, pickle.HIGHEST_PROTOCOL)

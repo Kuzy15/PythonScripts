@@ -177,7 +177,7 @@ def GenerateInterpolatedText(ngrams, words, N, width, lambdapercent):
         
                 # Get the possible next keys of major gram, count it and then get the probability
                 for s in chosenNgram[auxseq]:
-                    auxdict[str(s)]= str(round(chosenNgram[auxseq].count(s) / len(chosenNgram[auxseq]),2))
+                    auxdict[str(s)]= str(chosenNgram[auxseq].count(s) / len(chosenNgram[auxseq]))
 
                 probabilities.append(auxdict)
 
@@ -207,10 +207,10 @@ def GenerateInterpolatedText(ngrams, words, N, width, lambdapercent):
                     print("probabilities")
                     print(p)
                     if k in p.keys():
-                        probValues.append(round(float(p[k]) * float(lambdapercent[aux]),2))
+                        probValues.append(float(p[k]) * float(lambdapercent[aux]))
                         print(probValues)
                     aux += 1
-                percent.append(round(sum(probValues),2))
+                percent.append(sum(probValues))
                 print("key")
                 print(k)
                 print("percent")
@@ -230,7 +230,13 @@ def GenerateInterpolatedText(ngrams, words, N, width, lambdapercent):
             if(sum(percent) > 1):
                 rest = sum(percent) - 1
                 rest = rest / len(percent)
-                percent = [x - rest for x in percent]
+                cont = 0
+                while(rest != 0):
+                    if percent[cont] > rest:
+                        percent[cont] -= rest
+                        rest = 0
+                    cont += 1
+                print(percent)
 
 
 
@@ -312,5 +318,3 @@ SaveFile(OUTPUT, output, len(output), 60)
 
 if DEPURATION:
     sys.stdout.close()
-
-
