@@ -27,7 +27,6 @@ def main():
 
     NN.ReadArgsForTrainning()
 
-    print("AAAAAA")
     print(NN.SEQLENGTH)
 
     if NN.DEPURATION:
